@@ -14,16 +14,9 @@ st.set_page_config(page_title="Student Help Desk", page_icon="🙋", layout="wid
 def init_firebase():
     """Initializes the Firebase connection."""
     try:
-        # Get credentials from Streamlit secrets
         firebase_creds_dict = dict(st.secrets["firebase_credentials"])
-        
-        # The private_key in secrets is often read with escape characters.
-        # This line ensures it's parsed correctly.
         firebase_creds_dict["private_key"] = firebase_creds_dict["private_key"].replace('\\n', '\n')
-
         cred = credentials.Certificate(firebase_creds_dict)
-        
-        # Check if the app is already initialized
         if not firebase_admin._apps:
             firebase_admin.initialize_app(cred, {
                 'databaseURL': st.secrets["firebase_config"]["databaseURL"]
@@ -32,6 +25,23 @@ def init_firebase():
     except Exception as e:
         st.error(f"Failed to initialize Firebase: {e}. Please check your Streamlit secrets.")
         return False
+
+# --- Helper Functions ---
+def generate_qr_code(url):
+    """Generates a QR code image from a given URL."""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+    return byte_im
 
 # Initialize Firebase and proceed only if successful
 if init_firebase():
@@ -51,18 +61,25 @@ if init_firebase():
     st.markdown("This is a live, shared help desk. All students see the same queue and questions.")
 
     # --- Sidebar for QR Code ---
-    # (The QR code and sidebar logic remains the same)
     st.sidebar.title("App Access")
-    APP_URL = "https://blank-app-jqryzdh49zi.streamlit.app/" # IMPORTANT: Change your URL
-    # ... (QR code generation code as before) ...
+    # 🛑 IMPORTANT: Replace with your actual Streamlit Cloud app URL
+    APP_URL = "https://blank-app-jqryzdh49zi.streamlit.app/" 
     
+    # --- QR CODE LOGIC (RESTORED) ---
+    try:
+        qr_image_bytes = generate_qr_code(APP_URL)
+        st.sidebar.image(qr_image_bytes, caption="Scan to open this app", use_container_width=True)
+        st.sidebar.info(f"App URL: {APP_URL}")
+    except Exception as e:
+        st.sidebar.error(f"Error generating QR code: {e}")
+    
+    # --- Main Layout ---
     col1, col2 = st.columns([1, 1.5], gap="large")
 
     # --- Column 1: Help Queue ---
     with col1:
         st.header("🤝 Live Help Queue")
         
-        # Fetch current queue from Firebase
         help_queue = get_data("/help_queue") or []
 
         with st.form("student_join_form", clear_on_submit=True):
@@ -70,12 +87,11 @@ if init_firebase():
             submitted = st.form_submit_button("I Need Help!", type="primary")
 
             if submitted and student_name:
-                # Append new student and update Firebase
                 new_entry = {"name": student_name, "time": datetime.now().strftime("%I:%M %p")}
                 help_queue.append(new_entry)
                 set_data("/help_queue", help_queue)
                 st.success(f"You've been added to the queue, {student_name}!")
-                st.rerun() # Rerun to show the updated queue immediately
+                st.rerun()
 
         st.markdown("---")
         st.subheader("Current Queue")
@@ -113,7 +129,6 @@ if init_firebase():
     with col2:
         st.header("❓ Peer Q&A Board")
         
-        # Fetch questions from Firebase
         questions = get_data("/questions") or []
 
         with st.expander("Ask a new question..."):
@@ -132,11 +147,9 @@ if init_firebase():
         if not questions:
             st.info("No questions yet. Be the first!")
         else:
-            # Iterate through questions in reverse for newest first
             for idx, q in enumerate(reversed(questions)):
                 st.markdown(f"**Q: {q['question']}** - *Asked by {q['author']}*")
                 
-                # Display answers if they exist
                 if 'answers' in q and q['answers']:
                     for ans in q['answers']:
                         st.info(f"**A:** {ans['answer']} - *Answered by {ans['author']}*")
@@ -146,11 +159,8 @@ if init_firebase():
                     ans_text = st.text_area("Your Answer:", key=f"ans_text_{idx}")
                     if st.form_submit_button("Submit Answer"):
                         new_answer = {"author": ans_author, "answer": ans_text}
-                        
-                        # Find the original question index
                         original_idx = len(questions) - 1 - idx
                         
-                        # Initialize 'answers' list if it doesn't exist
                         if 'answers' not in questions[original_idx]:
                             questions[original_idx]['answers'] = []
                             
