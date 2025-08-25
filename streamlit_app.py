@@ -5,8 +5,6 @@ from io import BytesIO
 import firebase_admin
 from firebase_admin import credentials, db
 import json
-
-# --- 1. IMPORT THE NEW COMPONENT ---
 from streamlit_autorefresh import st_autorefresh
 
 # --- Page Configuration ---
@@ -43,7 +41,6 @@ def generate_qr_code(url):
 
 # Initialize Firebase and proceed only if successful
 if init_firebase():
-    # --- 2. ADD THE AUTO-REFRESH COMPONENT ---
     # Run the autorefresh component every 5 seconds (5000 milliseconds)
     st_autorefresh(interval=5000, key="data_refresher")
 
@@ -90,7 +87,7 @@ if init_firebase():
                 help_queue.append(new_entry)
                 set_data("/help_queue", help_queue)
                 st.success(f"You've been added to the queue, {student_name}!")
-                st.rerun()
+                # st.rerun()  <- REMOVED to prevent loop
 
         st.markdown("---")
         st.subheader("Current Queue")
@@ -117,12 +114,12 @@ if init_firebase():
                         help_queue.pop(selected_index)
                         set_data("/help_queue", help_queue)
                         st.toast("Student removed.", icon="🗑️")
-                        st.rerun()
+                        # st.rerun() <- REMOVED to prevent loop
 
                 if st.button("Clear Entire Queue", type="primary"):
                     set_data("/help_queue", [])
                     st.toast("Queue cleared!", icon="💥")
-                    st.rerun()
+                    # st.rerun() <- REMOVED to prevent loop
     
     # --- Column 2: Q&A Board ---
     with col2:
@@ -139,7 +136,7 @@ if init_firebase():
                     questions.append(new_question)
                     set_data("/questions", questions)
                     st.success("Question posted!")
-                    st.rerun()
+                    # st.rerun() <- REMOVED to prevent loop
 
         st.markdown("---")
 
@@ -165,5 +162,5 @@ if init_firebase():
                             
                         questions[original_idx]['answers'].append(new_answer)
                         set_data("/questions", questions)
-                        st.rerun()
+                        # st.rerun() <- REMOVED to prevent loop
                 st.markdown("---")
