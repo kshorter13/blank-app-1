@@ -89,8 +89,76 @@ with col1:
 
     st.markdown("---")
 
-    # --- NEW HELPER CONTROLS SECTION ---
     with st.expander("👨‍🏫 Helper Controls (Password Required)"):
         password = st.text_input("Enter password to manage queue", type="password", key="password_input")
 
-        # Check if
+        if password == "teacher123":
+            st.success("Correct Password. Controls are now active.", icon="✅")
+
+            if st.session_state.help_queue:
+                student_options = [f"{i+1}. {s['name']}" for i, s in enumerate(st.session_state.help_queue)]
+                student_to_remove = st.selectbox("Select student to remove:", options=student_options)
+
+                if st.button("Remove Selected Student"):
+                    selected_index = student_options.index(student_to_remove)
+                    removed_student = st.session_state.help_queue.pop(selected_index)
+                    st.toast(f"Removed {removed_student['name']} from the queue.", icon="🗑️")
+                    st.rerun()
+            else:
+                st.info("Queue is empty, no students to remove.")
+
+            if st.button("Clear Entire Queue", type="primary"):
+                st.session_state.help_queue = []
+                st.toast("The entire help queue has been cleared.", icon="💥")
+                st.rerun()
+
+        elif password != "":
+            st.error("Incorrect Password. Please try again.", icon="🚨")
+
+
+# --- THIS IS THE Q&A BOARD SECTION THAT WAS LIKELY MISSED ---
+with col2:
+    st.header("❓ Peer Q&A Board")
+    with st.expander("Ask a new question...", expanded=False):
+        with st.form("new_question_form", clear_on_submit=True):
+            question_author = st.text_input("Your Name:")
+            question_text = st.text_area("Your Question:")
+            submit_question = st.form_submit_button("Post Question", type="primary")
+
+            if submit_question and question_text and question_author:
+                st.session_state.questions.append({
+                    "author": question_author,
+                    "question": question_text,
+                    "answers": []
+                })
+                st.success("Your question has been posted!")
+            elif submit_question:
+                st.error("Please fill in both your name and question.")
+
+    st.markdown("---")
+
+    if not st.session_state.questions:
+        st.info("No questions have been asked yet. Be the first!")
+    else:
+        # Display questions in reverse chronological order
+        for idx, q in enumerate(reversed(st.session_state.questions)):
+            st.markdown(f"**Q: {q['question']}** - *Asked by {q['author']}*")
+            
+            for ans in q['answers']:
+                st.info(f"**A:** {ans['answer']} - *Answered by {ans['author']}*")
+            
+            with st.form(key=f"answer_form_{idx}", clear_on_submit=True):
+                answer_author = st.text_input("Your Name:", key=f"ans_author_{idx}")
+                answer_text = st.text_area("Your Answer:", key=f"ans_text_{idx}", height=100)
+                submit_answer = st.form_submit_button("Submit Answer")
+
+                if submit_answer and answer_text and answer_author:
+                    original_idx = len(st.session_state.questions) - 1 - idx
+                    st.session_state.questions[original_idx]['answers'].append({
+                        "author": answer_author,
+                        "answer": answer_text
+                    })
+                    st.rerun()
+                elif submit_answer:
+                    st.warning("Please provide your name and an answer.")
+            st.markdown("---")
