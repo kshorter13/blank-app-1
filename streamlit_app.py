@@ -51,7 +51,8 @@ st.markdown("Scan the QR code to access this page. Join the queue for help or as
 APP_URL = "https://blank-app-jqryzdh49zi.streamlit.app/" # <--- IMPORTANT: Change this URL after deploying!
 qr_image = generate_qr_code(APP_URL)
 
-st.sidebar.image(qr_image, caption="Scan to open this app", use_column_width=True)
+
+st.sidebar.image(qr_image, caption="Scan to open this app", use_container_width=True)
 st.sidebar.info(f"App URL: {APP_URL}")
 
 
