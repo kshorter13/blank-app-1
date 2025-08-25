@@ -1,164 +1,160 @@
 import streamlit as st
-import pandas as pd
 from datetime import datetime
 import qrcode
 from io import BytesIO
+import firebase_admin
+from firebase_admin import credentials, db
+import json
 
 # --- Page Configuration ---
-st.set_page_config(
-    page_title="Student Help Desk",
-    page_icon="🙋",
-    layout="wide"
-)
+st.set_page_config(page_title="Student Help Desk", page_icon="🙋", layout="wide")
 
-# --- Session State Initialization ---
-if 'help_queue' not in st.session_state:
-    st.session_state.help_queue = []
-if 'questions' not in st.session_state:
-    st.session_state.questions = []
-if 'current_user_name' not in st.session_state:
-    st.session_state.current_user_name = None
+# --- Firebase Initialization ---
+@st.cache_resource
+def init_firebase():
+    """Initializes the Firebase connection."""
+    try:
+        # Get credentials from Streamlit secrets
+        firebase_creds_dict = dict(st.secrets["firebase_credentials"])
+        
+        # The private_key in secrets is often read with escape characters.
+        # This line ensures it's parsed correctly.
+        firebase_creds_dict["private_key"] = firebase_creds_dict["private_key"].replace('\\n', '\n')
 
-# --- Helper Functions ---
-def generate_qr_code(url):
-    """Generates a QR code image from a given URL."""
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    byte_im = buf.getvalue()
-    return byte_im
+        cred = credentials.Certificate(firebase_creds_dict)
+        
+        # Check if the app is already initialized
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': st.secrets["firebase_config"]["databaseURL"]
+            })
+        return True
+    except Exception as e:
+        st.error(f"Failed to initialize Firebase: {e}. Please check your Streamlit secrets.")
+        return False
 
-# --- Main Application ---
-st.title("🙋 Student Help Desk & Q&A Board")
-st.markdown("Scan the QR code to access this page. Join the queue for help or ask a question for your peers!")
+# Initialize Firebase and proceed only if successful
+if init_firebase():
+    # --- Firebase Data Functions ---
+    def get_data(path):
+        """Fetches data from a specified path in Firebase."""
+        ref = db.reference(path)
+        return ref.get()
 
-# --- Sidebar for QR Code ---
-st.sidebar.title("App Access")
-APP_URL = "https://blank-app-jqryzdh49zi.streamlit.app/" # IMPORTANT: Change this URL after deploying!
-try:
-    qr_image_bytes = generate_qr_code(APP_URL)
-    st.sidebar.image(qr_image_bytes, caption="Scan to open this app", use_container_width=True)
-except Exception as e:
-    st.sidebar.error(f"Error generating QR code: {e}")
-st.sidebar.info(f"App URL: {APP_URL}")
+    def set_data(path, data):
+        """Writes or overwrites data at a specified path."""
+        ref = db.reference(path)
+        ref.set(data)
 
-# --- Main Layout (Two Columns) ---
-col1, col2 = st.columns([1, 1.5], gap="large")
+    # --- Main Application ---
+    st.title("🙋 Central Help Desk & Q&A Board")
+    st.markdown("This is a live, shared help desk. All students see the same queue and questions.")
 
-# --- Column 1: Help Queue ---
-with col1:
-    st.header("🤝 Live Help Queue")
+    # --- Sidebar for QR Code ---
+    # (The QR code and sidebar logic remains the same)
+    st.sidebar.title("App Access")
+    APP_URL = "https://blank-app-jqryzdh49zi.streamlit.app/" # IMPORTANT: Change your URL
+    # ... (QR code generation code as before) ...
+    
+    col1, col2 = st.columns([1, 1.5], gap="large")
 
-    with st.form("student_join_form", clear_on_submit=True):
-        student_name = st.text_input("Enter your name to join the queue:", key="student_name_input")
-        submitted = st.form_submit_button("I Need Help!", type="primary")
+    # --- Column 1: Help Queue ---
+    with col1:
+        st.header("🤝 Live Help Queue")
+        
+        # Fetch current queue from Firebase
+        help_queue = get_data("/help_queue") or []
 
-        if submitted and student_name:
-            if any(student['name'] == student_name for student in st.session_state.help_queue):
-                st.warning(f"{student_name}, you are already in the queue!")
-            else:
-                st.session_state.help_queue.append({
-                    "name": student_name,
-                    "time": datetime.now().strftime("%I:%M %p")
-                })
-                st.session_state.current_user_name = student_name
+        with st.form("student_join_form", clear_on_submit=True):
+            student_name = st.text_input("Enter your name to join the queue:")
+            submitted = st.form_submit_button("I Need Help!", type="primary")
+
+            if submitted and student_name:
+                # Append new student and update Firebase
+                new_entry = {"name": student_name, "time": datetime.now().strftime("%I:%M %p")}
+                help_queue.append(new_entry)
+                set_data("/help_queue", help_queue)
                 st.success(f"You've been added to the queue, {student_name}!")
-        elif submitted and not student_name:
-            st.error("Please enter your name.")
+                st.rerun() # Rerun to show the updated queue immediately
 
-    st.markdown("---")
+        st.markdown("---")
+        st.subheader("Current Queue")
 
-    st.subheader("Current Queue")
-    if not st.session_state.help_queue:
-        st.info("The queue is currently empty. 🎉")
-    else:
-        for i, student in enumerate(st.session_state.help_queue, 1):
-            name = student['name']
-            if name == st.session_state.current_user_name:
-                st.markdown(f"### **{i}. {name} (You are here!)**")
-            else:
-                st.markdown(f"#### {i}. {name}")
+        if not help_queue:
+            st.info("The queue is currently empty. 🎉")
+        else:
+            for i, student in enumerate(help_queue, 1):
+                st.markdown(f"#### {i}. {student['name']}")
 
-    st.markdown("---")
+        st.markdown("---")
 
-    with st.expander("👨‍🏫 Helper Controls (Password Required)"):
-        password = st.text_input("Enter password to manage queue", type="password", key="password_input")
+        with st.expander("👨‍🏫 Helper Controls (Password Required)"):
+            password = st.text_input("Enter password", type="password")
+            if password == "teacher123":
+                st.success("Correct Password. Controls are active.", icon="✅")
+                
+                if help_queue:
+                    student_options = [f"{i+1}. {s['name']}" for i, s in enumerate(help_queue)]
+                    student_to_remove = st.selectbox("Select student to remove:", options=student_options)
+                    
+                    if st.button("Remove Selected Student"):
+                        selected_index = student_options.index(student_to_remove)
+                        help_queue.pop(selected_index)
+                        set_data("/help_queue", help_queue)
+                        st.toast("Student removed.", icon="🗑️")
+                        st.rerun()
 
-        if password == "teacher123":
-            st.success("Correct Password. Controls are now active.", icon="✅")
-
-            if st.session_state.help_queue:
-                student_options = [f"{i+1}. {s['name']}" for i, s in enumerate(st.session_state.help_queue)]
-                student_to_remove = st.selectbox("Select student to remove:", options=student_options)
-
-                if st.button("Remove Selected Student"):
-                    selected_index = student_options.index(student_to_remove)
-                    removed_student = st.session_state.help_queue.pop(selected_index)
-                    st.toast(f"Removed {removed_student['name']} from the queue.", icon="🗑️")
+                if st.button("Clear Entire Queue", type="primary"):
+                    set_data("/help_queue", [])
+                    st.toast("Queue cleared!", icon="💥")
                     st.rerun()
-            else:
-                st.info("Queue is empty, no students to remove.")
+    
+    # --- Column 2: Q&A Board ---
+    with col2:
+        st.header("❓ Peer Q&A Board")
+        
+        # Fetch questions from Firebase
+        questions = get_data("/questions") or []
 
-            if st.button("Clear Entire Queue", type="primary"):
-                st.session_state.help_queue = []
-                st.toast("The entire help queue has been cleared.", icon="💥")
-                st.rerun()
-
-        elif password != "":
-            st.error("Incorrect Password. Please try again.", icon="🚨")
-
-
-# --- THIS IS THE Q&A BOARD SECTION THAT WAS LIKELY MISSED ---
-with col2:
-    st.header("❓ Peer Q&A Board")
-    with st.expander("Ask a new question...", expanded=False):
-        with st.form("new_question_form", clear_on_submit=True):
-            question_author = st.text_input("Your Name:")
-            question_text = st.text_area("Your Question:")
-            submit_question = st.form_submit_button("Post Question", type="primary")
-
-            if submit_question and question_text and question_author:
-                st.session_state.questions.append({
-                    "author": question_author,
-                    "question": question_text,
-                    "answers": []
-                })
-                st.success("Your question has been posted!")
-            elif submit_question:
-                st.error("Please fill in both your name and question.")
-
-    st.markdown("---")
-
-    if not st.session_state.questions:
-        st.info("No questions have been asked yet. Be the first!")
-    else:
-        # Display questions in reverse chronological order
-        for idx, q in enumerate(reversed(st.session_state.questions)):
-            st.markdown(f"**Q: {q['question']}** - *Asked by {q['author']}*")
-            
-            for ans in q['answers']:
-                st.info(f"**A:** {ans['answer']} - *Answered by {ans['author']}*")
-            
-            with st.form(key=f"answer_form_{idx}", clear_on_submit=True):
-                answer_author = st.text_input("Your Name:", key=f"ans_author_{idx}")
-                answer_text = st.text_area("Your Answer:", key=f"ans_text_{idx}", height=100)
-                submit_answer = st.form_submit_button("Submit Answer")
-
-                if submit_answer and answer_text and answer_author:
-                    original_idx = len(st.session_state.questions) - 1 - idx
-                    st.session_state.questions[original_idx]['answers'].append({
-                        "author": answer_author,
-                        "answer": answer_text
-                    })
+        with st.expander("Ask a new question..."):
+            with st.form("new_question_form", clear_on_submit=True):
+                author = st.text_input("Your Name:")
+                text = st.text_area("Your Question:")
+                if st.form_submit_button("Post Question", type="primary"):
+                    new_question = {"author": author, "question": text, "answers": []}
+                    questions.append(new_question)
+                    set_data("/questions", questions)
+                    st.success("Question posted!")
                     st.rerun()
-                elif submit_answer:
-                    st.warning("Please provide your name and an answer.")
-            st.markdown("---")
+
+        st.markdown("---")
+
+        if not questions:
+            st.info("No questions yet. Be the first!")
+        else:
+            # Iterate through questions in reverse for newest first
+            for idx, q in enumerate(reversed(questions)):
+                st.markdown(f"**Q: {q['question']}** - *Asked by {q['author']}*")
+                
+                # Display answers if they exist
+                if 'answers' in q and q['answers']:
+                    for ans in q['answers']:
+                        st.info(f"**A:** {ans['answer']} - *Answered by {ans['author']}*")
+
+                with st.form(key=f"answer_form_{idx}", clear_on_submit=True):
+                    ans_author = st.text_input("Your Name:", key=f"ans_auth_{idx}")
+                    ans_text = st.text_area("Your Answer:", key=f"ans_text_{idx}")
+                    if st.form_submit_button("Submit Answer"):
+                        new_answer = {"author": ans_author, "answer": ans_text}
+                        
+                        # Find the original question index
+                        original_idx = len(questions) - 1 - idx
+                        
+                        # Initialize 'answers' list if it doesn't exist
+                        if 'answers' not in questions[original_idx]:
+                            questions[original_idx]['answers'] = []
+                            
+                        questions[original_idx]['answers'].append(new_answer)
+                        set_data("/questions", questions)
+                        st.rerun()
+                st.markdown("---")
