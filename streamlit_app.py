@@ -6,6 +6,9 @@ import firebase_admin
 from firebase_admin import credentials, db
 import json
 
+# --- 1. IMPORT THE NEW COMPONENT ---
+from streamlit_autorefresh import st_autorefresh
+
 # --- Page Configuration ---
 st.set_page_config(page_title="Student Help Desk", page_icon="🙋", layout="wide")
 
@@ -29,12 +32,7 @@ def init_firebase():
 # --- Helper Functions ---
 def generate_qr_code(url):
     """Generates a QR code image from a given URL."""
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
     qr.add_data(url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
@@ -45,6 +43,10 @@ def generate_qr_code(url):
 
 # Initialize Firebase and proceed only if successful
 if init_firebase():
+    # --- 2. ADD THE AUTO-REFRESH COMPONENT ---
+    # Run the autorefresh component every 5 seconds (5000 milliseconds)
+    st_autorefresh(interval=5000, key="data_refresher")
+
     # --- Firebase Data Functions ---
     def get_data(path):
         """Fetches data from a specified path in Firebase."""
@@ -62,10 +64,7 @@ if init_firebase():
 
     # --- Sidebar for QR Code ---
     st.sidebar.title("App Access")
-    # 🛑 IMPORTANT: Replace with your actual Streamlit Cloud app URL
-    APP_URL = "https://blank-app-jqryzdh49zi.streamlit.app/" 
-    
-    # --- QR CODE LOGIC (RESTORED) ---
+    APP_URL = "https://blank-app-jqryzdh49zi.streamlit.app/" # 🛑 IMPORTANT: Replace with your actual Streamlit Cloud app URL
     try:
         qr_image_bytes = generate_qr_code(APP_URL)
         st.sidebar.image(qr_image_bytes, caption="Scan to open this app", use_container_width=True)
